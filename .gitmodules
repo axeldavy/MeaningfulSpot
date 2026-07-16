@@ -1,0 +1,8 @@
+[submodule "externals/pylene"]
+	path = externals/pylene
+	url = https://github.com/axeldavy/pylene
+	branch = fixes
+[submodule "externals/xsimd"]
+	path = externals/xsimd
+	url = https://github.com/axeldavy/xsimd
+	branch = meaningful_spot_paper
