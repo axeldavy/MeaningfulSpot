@@ -23,7 +23,9 @@ def compilerName() -> str:
     compiler = distutils.ccompiler.get_default_compiler()
     return compiler
 
-xsimd_dir = os.path.join("external", "xsimd", "include")
+xsimd_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "externals", "xsimd", "include")
+)
 
 if compilerName() == "msvc":
     cc_args = ["/O2", "/arch:AVX2", "/std:c++20", "/favor:INTEL64", "/MACHINE:X64"]

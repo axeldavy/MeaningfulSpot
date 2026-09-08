@@ -18,8 +18,8 @@ def compilerName() -> str:
     compiler = distutils.ccompiler.get_default_compiler()
     return compiler
 
-xsimd_dir = os.path.join("..", "externals", "xsimd", "include")
-pylene_dir = os.path.join("..", "externals", "pylene", "pylene", "include")
+xsimd_dir = os.path.join(os.path.dirname(__file__), "..", "externals", "xsimd", "include")
+pylene_dir = os.path.join(os.path.dirname(__file__), "..", "externals", "pylene", "pylene", "include")
 
 if compilerName() == "msvc":
     cc_args = ["/O2", "/arch:AVX2", "/std:c++20", "/favor:INTEL64", "/MACHINE:X64"]
@@ -43,7 +43,7 @@ else:
     ll_args = cc_args
     additional_include_dirs = ["/usr/include/eigen3/"]
 
-pylene_cpp_dir = os.path.join("..", "externals", "pylene", "pylene", "src")
+pylene_cpp_dir = os.path.join(os.path.dirname(__file__), "..", "externals", "pylene", "pylene", "src")
 all_pylene_cpp_files = glob.glob("**/*.cpp", root_dir=pylene_cpp_dir, recursive=True)
 all_pylene_cpp_files = [os.path.join(pylene_cpp_dir, f) for f in all_pylene_cpp_files]
 

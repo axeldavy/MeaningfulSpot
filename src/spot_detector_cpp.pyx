@@ -159,7 +159,7 @@ cdef void _detect_spots_as_boxes_internal_float(vector[SSpotBox]& boxes, image, 
             noise_level
         )
 
-def detect_spots_as_boxes(image, max_elems=15, noise_level=4., epsilon=1.):
+def detect_spots_as_boxes(image, *, int min_elems=1, int max_elems=15, float noise_level=4., float epsilon=1.):
     """
     Detect spots (local level set search implementation).
 
@@ -168,6 +168,7 @@ def detect_spots_as_boxes(image, max_elems=15, noise_level=4., epsilon=1.):
     Inputs:
         image: Input image. Supported formats are 8b, 16b and float32.
             Other formats are converted to float32.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -194,6 +195,8 @@ def detect_spots_as_boxes(image, max_elems=15, noise_level=4., epsilon=1.):
     result = []
     cdef SSpotBox box 
     for box in boxes:
+        if <int>box.m_NumPixels < min_elems:
+            continue
         result.append((
             box.m_Y,
             box.m_X,
@@ -232,7 +235,7 @@ cdef void _detect_spots_as_boxes_maxtree_internal_16b(vector[SSpotBox]& boxes, i
             noise_level
         )
 
-def detect_spots_as_boxes_maxtree(image, max_elems=15, noise_level=4., epsilon=1.):
+def detect_spots_as_boxes_maxtree(image, *, int min_elems=1, int max_elems=15, float noise_level=4., float epsilon=1.):
     """
     Detect spots (Max-Tree implementation).
 
@@ -240,6 +243,7 @@ def detect_spots_as_boxes_maxtree(image, max_elems=15, noise_level=4., epsilon=1
 
     Inputs:
         image: Input image. Supported formats are unsigned 8b, 16b.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -266,6 +270,8 @@ def detect_spots_as_boxes_maxtree(image, max_elems=15, noise_level=4., epsilon=1
     result = []
     cdef SSpotBox box 
     for box in boxes:
+        if <int>box.m_NumPixels < min_elems:
+            continue
         result.append((
             box.m_Y,
             box.m_X,
@@ -343,7 +349,7 @@ cdef void _detect_spots_as_mask_internal_float(vector[SPixelCoord]& pixels,
         )
     
 
-def detect_spots_as_mask(image, max_elems=15, noise_level=4., epsilon=1.):
+def detect_spots_as_mask(image, *, int min_elems=1, int max_elems=15, float noise_level=4., float epsilon=1.):
     """
     Detect spots (local level set search implementation).
 
@@ -355,6 +361,7 @@ def detect_spots_as_mask(image, max_elems=15, noise_level=4., epsilon=1.):
     Inputs:
         image: Input image. Supported formats are 8b, 16b and float32.
             Other formats are converted to float32.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -362,10 +369,8 @@ def detect_spots_as_mask(image, max_elems=15, noise_level=4., epsilon=1.):
             false detections on a random image of the same size.
 
     Outputs:
-        A list of tuples (one tuple per detected box). The tuples contain
-            (y1, x1, y2, x2, size, score), where size if the number of pixels
-            in the detected level set, and score is the log(NFA) value that was
-            used in the threshold (lower means more contrasted spot)
+        A mask of the same size of the input image indicating pixels part
+        of a detection
     """
     cdef vector[SPixelCoord] pixels
     cdef vector[size_t] ll_starts
@@ -383,11 +388,25 @@ def detect_spots_as_mask(image, max_elems=15, noise_level=4., epsilon=1.):
     result = np.zeros(image.shape, dtype=np.uint8)
     cdef uint8_t[:,::1] result_view = result
     cdef SPixelCoord coord 
-    for coord in pixels:
-        result_view[coord.m_Y, coord.m_X] = 255
+    #for coord in pixels:
+    #    result_view[coord.m_Y, coord.m_X] = 255
+    cdef size_t i, j, start, stop
+    for i in range(ll_starts.size()):
+        start = ll_starts[i]
+        if i + 1 < ll_starts.size():
+            stop = ll_starts[i + 1]
+        else:
+            stop = pixels.size()
+        if (stop - start) < min_elems:
+            continue
+        for j in range(start, stop):
+            result_view[
+                pixels[j].m_Y,
+                pixels[j].m_X
+            ] = 255
     return result
 
-def detect_spots_detailed(image, max_elems=15, noise_level=4., epsilon=1.):
+def detect_spots_detailed(image, *, int min_elems=1, int max_elems=15, float noise_level=4., float epsilon=1.):
     """
     Detect spots (local level set search implementation).
 
@@ -396,6 +415,7 @@ def detect_spots_detailed(image, max_elems=15, noise_level=4., epsilon=1.):
     Inputs:
         image: Input image. Supported formats are 8b, 16b and float32.
             Other formats are converted to float32.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -425,13 +445,15 @@ def detect_spots_detailed(image, max_elems=15, noise_level=4., epsilon=1.):
     # Convert the detections to lists of pixels
     cdef list results = []
     cdef list result
-    cdef size_t i, start, stop
+    cdef size_t i, j, start, stop
     for i in range(ll_starts.size()):
         start = ll_starts[i]
         if i + 1 < ll_starts.size():
             stop = ll_starts[i + 1]
         else:
             stop = pixels.size()
+        if (stop - start) < min_elems:
+            continue
         result = []
         for j in range(start, stop):
             result.append((
@@ -490,7 +512,7 @@ cdef void _detect_spots_as_mask_maxtree_internal_16b(
             noise_level
         )
 
-def detect_spots_as_mask_maxtree(image, max_elems=15, noise_level=4., epsilon=1.):
+def detect_spots_as_mask_maxtree(image, *, int min_elems=1, int max_elems=15, float noise_level=4., float epsilon=1.):
     """
     Detect spots (Max-Tree implementation).
 
@@ -501,6 +523,7 @@ def detect_spots_as_mask_maxtree(image, max_elems=15, noise_level=4., epsilon=1.
 
     Inputs:
         image: Input image. Supported formats are 8b and 16b.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -508,10 +531,8 @@ def detect_spots_as_mask_maxtree(image, max_elems=15, noise_level=4., epsilon=1.
             false detections on a random image of the same size.
 
     Outputs:
-        A list of tuples (one tuple per detected box). The tuples contain
-            (y1, x1, y2, x2, size, score), where size if the number of pixels
-            in the detected level set, and score is the log(NFA) value that was
-            used in the threshold (lower means more contrasted spot)
+        A mask of the same size of the input image indicating pixels part
+        of a detection
     """
     cdef vector[SPixelCoord] pixels
     cdef vector[size_t] ll_starts
@@ -533,7 +554,7 @@ def detect_spots_as_mask_maxtree(image, max_elems=15, noise_level=4., epsilon=1.
         result_view[coord.m_Y, coord.m_X] = 255
     return result
 
-def detect_spots_detailed_maxtree(image, max_elems=15, noise_level=4., epsilon=1.):
+def detect_spots_detailed_maxtree(image, *, int min_elems=1, int max_elems=15, float noise_level=4., float epsilon=1.):
     """
     Detect spots (Max-Tree implementation).
 
@@ -541,6 +562,7 @@ def detect_spots_detailed_maxtree(image, max_elems=15, noise_level=4., epsilon=1
 
     Inputs:
         image: Input image. Supported formats are 8b and 16b.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -570,13 +592,15 @@ def detect_spots_detailed_maxtree(image, max_elems=15, noise_level=4., epsilon=1
     # Convert the detections to lists of pixels
     cdef list results = []
     cdef list result
-    cdef size_t i, start, stop
+    cdef size_t i, j, start, stop
     for i in range(ll_starts.size()):
         start = ll_starts[i]
         if i + 1 < ll_starts.size():
             stop = ll_starts[i + 1]
         else:
             stop = pixels.size()
+        if (stop - start) < min_elems:
+            continue
         result = []
         for j in range(start, stop):
             result.append((
@@ -632,7 +656,7 @@ cdef object _remove_small_sets_float(image, int max_elems):
         )
     return result
 
-def remove_small_sets(image, max_elems=15):
+def remove_small_sets(image, *, max_elems=15):
     """
     Remove small level sets from the image (Local level set search implementation).
 
@@ -686,7 +710,7 @@ cdef object _remove_small_sets_maxtree_16b(image, int max_elems):
         )
     return result
 
-def remove_small_sets_maxtree(image, max_elems=15):
+def remove_small_sets_maxtree(image, *, max_elems=15):
     """
     Remove small level sets from the image (Max-Tree implementation).
 

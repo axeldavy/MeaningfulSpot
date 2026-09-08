@@ -26,7 +26,7 @@ def max_pool_filter(image: NDArray, kernel_height: int, kernel_width: int) -> li
     """
     ...
 
-def detect_spots_as_boxes(image: NDArray, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[tuple[float, float, float, float, float, float]]:
+def detect_spots_as_boxes(image: NDArray, *, min_elems: int = 1, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[tuple[float, float, float, float, float, float]]:
     """
     Detect spots (local level set search implementation).
 
@@ -35,6 +35,7 @@ def detect_spots_as_boxes(image: NDArray, max_elems: int = 15, noise_level: floa
     Inputs:
         image: Input image. Supported formats are 8b, 16b and float32.
             Other formats are converted to float32.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -49,7 +50,7 @@ def detect_spots_as_boxes(image: NDArray, max_elems: int = 15, noise_level: floa
     """
     ...
 
-def detect_spots_as_boxes_maxtree(image: PyleneCompatArray, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[tuple[float, float, float, float, float, float]]:
+def detect_spots_as_boxes_maxtree(image: PyleneCompatArray, *, min_elems: int = 1, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[tuple[float, float, float, float, float, float]]:
     """
     Detect spots (Max-Tree implementation).
 
@@ -57,6 +58,7 @@ def detect_spots_as_boxes_maxtree(image: PyleneCompatArray, max_elems: int = 15,
 
     Inputs:
         image: Input image. Supported formats are unsigned 8b, 16b.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -71,7 +73,7 @@ def detect_spots_as_boxes_maxtree(image: PyleneCompatArray, max_elems: int = 15,
     """
     ...
 
-def detect_spots_as_mask(image: NDArray, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> NDArray[uint8]:
+def detect_spots_as_mask(image: NDArray, *, min_elems: int = 1, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> NDArray[uint8]:
     """
     Detect spots (local level set search implementation).
 
@@ -83,6 +85,7 @@ def detect_spots_as_mask(image: NDArray, max_elems: int = 15, noise_level: float
     Inputs:
         image: Input image. Supported formats are 8b, 16b and float32.
             Other formats are converted to float32.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -90,14 +93,12 @@ def detect_spots_as_mask(image: NDArray, max_elems: int = 15, noise_level: float
             false detections on a random image of the same size.
 
     Outputs:
-        A list of tuples (one tuple per detected box). The tuples contain
-            (y1, x1, y2, x2, size, score), where size if the number of pixels
-            in the detected level set, and score is the log(NFA) value that was
-            used in the threshold (lower means more contrasted spot)
+        A mask of the same size of the input image indicating pixels part
+            of a detection
     """
     ...
 
-def detect_spots_detailed(image: NDArray, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[list[tuple[float, float, float]]]:
+def detect_spots_detailed(image: NDArray, *, min_elems: int = 1, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[list[tuple[float, float, float]]]:
     """
     Detect spots (local level set search implementation).
 
@@ -106,6 +107,7 @@ def detect_spots_detailed(image: NDArray, max_elems: int = 15, noise_level: floa
     Inputs:
         image: Input image. Supported formats are 8b, 16b and float32.
             Other formats are converted to float32.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -121,7 +123,7 @@ def detect_spots_detailed(image: NDArray, max_elems: int = 15, noise_level: floa
     """
     ...
 
-def detect_spots_as_mask_maxtree(image: PyleneCompatArray, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> NDArray[uint8]:
+def detect_spots_as_mask_maxtree(image: PyleneCompatArray, *, min_elems: int = 1, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> NDArray[uint8]:
     """
     Detect spots (Max-Tree implementation).
 
@@ -131,7 +133,8 @@ def detect_spots_as_mask_maxtree(image: PyleneCompatArray, max_elems: int = 15, 
     of the detections. 
 
     Inputs:
-        image: Input image. Supported formats are 8b a,d 16b.
+        image: Input image. Supported formats are 8b and 16b.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -139,14 +142,12 @@ def detect_spots_as_mask_maxtree(image: PyleneCompatArray, max_elems: int = 15, 
             false detections on a random image of the same size.
 
     Outputs:
-        A list of tuples (one tuple per detected box). The tuples contain
-            (y1, x1, y2, x2, size, score), where size if the number of pixels
-            in the detected level set, and score is the log(NFA) value that was
-            used in the threshold (lower means more contrasted spot)
+        A mask of the same size of the input image indicating pixels part
+            of a detection
     """
     ...
 
-def detect_spots_detailed_maxtree(image: PyleneCompatArray, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[list[tuple[float, float, float]]]:
+def detect_spots_detailed_maxtree(image: PyleneCompatArray, *, min_elems: int = 1, max_elems: int = 15, noise_level: float = 4., epsilon: float = 1.) -> list[list[tuple[float, float, float]]]:
     """
     Detect spots (Max-Tree implementation).
 
@@ -154,6 +155,7 @@ def detect_spots_detailed_maxtree(image: PyleneCompatArray, max_elems: int = 15,
 
     Inputs:
         image: Input image. Supported formats are 8b and 16b.
+        min_elems: The minimum number of pixels allowed in a detection.
         max_elems: The maximum number of pixels allowed in a level set
             during the search.
         noise_level: Used in the method threshold. Assumed image noise level.
@@ -169,7 +171,7 @@ def detect_spots_detailed_maxtree(image: PyleneCompatArray, max_elems: int = 15,
     """
     ...
 
-def remove_small_sets(image: NDArray, max_elems=15) -> NDArray:
+def remove_small_sets(image: NDArray, *, max_elems=15) -> NDArray:
     """
     Remove small level sets from the image (Local level set search implementation).
 
@@ -188,7 +190,7 @@ def remove_small_sets(image: NDArray, max_elems=15) -> NDArray:
     """
     ...
 
-def remove_small_sets_maxtree(image: PyleneCompatArray, max_elems: int = 15) -> NDArray:
+def remove_small_sets_maxtree(image: PyleneCompatArray, *, max_elems: int = 15) -> NDArray:
     """
     Remove small level sets from the image (Max-Tree implementation).
 
