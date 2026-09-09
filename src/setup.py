@@ -8,43 +8,259 @@ from Cython.Build import cythonize
 import distutils
 import distutils.ccompiler
 import glob
-import numpy as np
 import os
+import platform
+import re
+import shutil
+import sysconfig
+from pathlib import Path
+import numpy as np
 from setuptools import setup
 from setuptools.extension import Extension
+
+ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = Path(__file__).resolve().parent
+os.chdir(SRC_DIR)
+README = ROOT / "README.md"
+ROOT_EXTERNALS = ROOT / "externals"
+X86_MACHINES = {"x86_64", "amd64", "AMD64", "i386", "i686"}
+X86_64_MACHINES = {"x86_64", "amd64", "AMD64"}
+
+
+def _target_arches() -> set[str]:
+    archs: set[str] = set()
+    aliases = {"amd64": "x86_64", "aarch64": "arm64"}
+
+    def add_arch(name: str):
+        normalized = aliases.get(name.lower(), name.lower())
+        archs.add(normalized)
+
+    archflags = os.environ.get("ARCHFLAGS", "")
+    for arch in re.findall(r"-arch\s+([A-Za-z0-9_]+)", archflags):
+        add_arch(arch)
+    platform_tag = sysconfig.get_platform().lower()
+    if "universal2" in platform_tag:
+        archs.update({"x86_64", "arm64"})
+    for arch in ("x86_64", "amd64", "i386", "i686", "arm64", "aarch64"):
+        if arch in platform_tag:
+            add_arch(arch)
+    if not archs and platform.machine():
+        add_arch(platform.machine())
+    return archs
+
+
+def _targets_only_x86() -> bool:
+    target_arches = _target_arches()
+    if not target_arches:
+        return False
+    return all(arch in X86_MACHINES for arch in target_arches)
+
+
+def _targets_only_x86_64() -> bool:
+    target_arches = _target_arches()
+    if not target_arches:
+        return False
+    return all(arch in X86_64_MACHINES for arch in target_arches)
+
+
+def _targets_mixed_x86_non_x86() -> bool:
+    target_arches = _target_arches()
+    if not target_arches:
+        return False
+    has_x86 = any(arch in X86_MACHINES for arch in target_arches)
+    has_non_x86 = any(arch not in X86_MACHINES for arch in target_arches)
+    return has_x86 and has_non_x86
+
+
+def _target_is_linux() -> bool:
+    return "linux" in sysconfig.get_platform().lower()
+
+
+def _target_is_macos() -> bool:
+    return "macosx" in sysconfig.get_platform().lower()
+
+
+def _stage_license_files() -> list[str]:
+    """Copy the license files into src/_licenses/ so setuptools' license_files
+    globs (which must stay within the package root once cwd is SRC_DIR) can
+    find them without escaping upward via '..'."""
+    license_dir = SRC_DIR / "_licenses"
+    sources = {
+        "LICENSE": ROOT / "LICENSE",
+        "THIRD_PARTY_NOTICES.md": ROOT / "THIRD_PARTY_NOTICES.md",
+        "externals/pylene/LICENSE": ROOT / "externals" / "pylene" / "LICENSE",
+        "externals/xsimd/LICENSE": ROOT / "externals" / "xsimd" / "LICENSE",
+    }
+    staged = []
+    for rel_dest, src in sources.items():
+        dest = license_dir / rel_dest
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        # setuptools' license-file glob patterns require '/' regardless of OS.
+        staged.append(dest.relative_to(SRC_DIR).as_posix())
+    return staged
+
+
+def _conan_include_and_lib_dirs() -> tuple[list[str], list[str]]:
+    includedirs: set[str] = set()
+    libdirs: set[str] = set()
+
+    def add_from_env_script(path: Path):
+        if not path.exists():
+            return
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for pattern in ("CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH"):
+            match = re.search(rf"export\s+{re.escape(pattern)}=(.*)", text)
+            if not match:
+                continue
+            value = match.group(1).strip().strip('"').strip("'")
+            for item in value.split(os.pathsep):
+                if not item:
+                    continue
+                # Conan's generated env scripts sometimes reference the
+                # previous value of the variable using bash parameter
+                # expansion, e.g. '${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}'.
+                # A naive ':' split breaks that syntax into bogus tokens
+                # (e.g. '${LD_LIBRARY_PATH', '+', '$LD_LIBRARY_PATH}'), so
+                # skip anything that isn't a plain absolute filesystem path.
+                if any(ch in item for ch in ("$", "{", "}", "`")):
+                    continue
+                if not os.path.isabs(item):
+                    continue
+                if pattern in {"CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH"}:
+                    includedirs.add(item)
+                else:
+                    libdirs.add(item)
+
+    extra_output_dir = Path(os.environ.get("MEANINGFULSPOT_CONAN_OUTPUT_DIR", ""))
+    search_roots = [
+        ROOT / "build" / "conan",
+        ROOT / ".conan",
+        Path(os.environ.get("CONAN_HOME", ROOT / ".conan")),
+        extra_output_dir if str(extra_output_dir) else None,
+        Path.home() / ".conan",
+        Path.home() / ".conan2",
+    ]
+    search_roots = [root for root in search_roots if root is not None]
+    for root in search_roots:
+        if not root.exists():
+            continue
+        for script in sorted(root.glob("**/conanbuildenv-*.sh")):
+            add_from_env_script(script)
+        for script in sorted(root.glob("**/conanrunenv-*.sh")):
+            add_from_env_script(script)
+
+    extra_output_dir = Path(os.environ.get("MEANINGFULSPOT_CONAN_OUTPUT_DIR", ""))
+    for candidate in (
+        ROOT / "build" / "conan",
+        ROOT / ".conan",
+        Path(os.environ.get("CONAN_HOME", ROOT / ".conan")),
+        extra_output_dir if str(extra_output_dir) else None,
+        Path.home() / ".conan" / "p",
+        Path.home() / ".conan2" / "p",
+    ):
+        if candidate is None:
+            continue
+        if not candidate.exists():
+            continue
+        for include_dir in candidate.glob("**/include"):
+            if include_dir.is_dir():
+                includedirs.add(str(include_dir))
+                eigen_dir = include_dir / "eigen3"
+                if eigen_dir.is_dir():
+                    includedirs.add(str(eigen_dir))
+        for lib_name in ("lib", "lib64"):
+            for lib_dir in candidate.glob(f"**/{lib_name}"):
+                if lib_dir.is_dir():
+                    libdirs.add(str(lib_dir))
+
+    return sorted(includedirs), sorted(libdirs)
 
 def compilerName() -> str:
     """Return the name of the compiler."""
     compiler = distutils.ccompiler.get_default_compiler()
     return compiler
 
-xsimd_dir = os.path.join(os.path.dirname(__file__), "..", "externals", "xsimd", "include")
-pylene_dir = os.path.join(os.path.dirname(__file__), "..", "externals", "pylene", "pylene", "include")
+xsimd_dir = str(ROOT_EXTERNALS / "xsimd" / "include")
+pylene_dir = str(ROOT_EXTERNALS / "pylene" / "pylene" / "include")
 
 if compilerName() == "msvc":
-    cc_args = ["/O2", "/arch:AVX2", "/std:c++20", "/favor:INTEL64", "/MACHINE:X64"]
-    # Pylene requires FreeImage, rangev3 and boost. On Windows, we assume they
-    # are not available and you should put them in the externals directory.
-    ll_args = [
-        os.path.join("..", "externals", "FreeImage", "FreeImage.lib")
-    ]
-    additional_include_dirs = [
-        os.path.join("..", "externals", "FreeImage"),
-        os.path.join("..", "externals", "boost", "include"),
-        os.path.join("..", "externals", "range-v3", "include")
-    ]
+    # /utf-8 is required by fmt (static assertion on Unicode support) and is
+    # generally correct for source files that may contain non-ASCII text.
+    cc_args = ["/O2", "/std:c++20", "/favor:INTEL64", "/MACHINE:X64", "/utf-8"]
+    if _targets_only_x86_64():
+        cc_args.insert(1, "/arch:AVX2")
+    ll_args = []
+    additional_include_dirs = []
 else:
-    # Since we use thread_local variables in the hot path, the default linux gnu tls behaviour
-    # it expensive (initialize on first use). gnu2 gives a significant performance boost.
-    # Pylene requires FreeImage, rangev3, eigen3 and boost. On Linux, we assume they are available
-    # as system libraries.
-    cc_args = ["-mavx", "-mavx2", "-O3", "-std=c++20", "-mfma", "-march=native",
-               "-mtls-dialect=gnu2", "-ltbb", "-lfreeimage", '-lfmt', '-lcfitsio']
+    # Pylene needs rangev3, eigen3 and boost. These are resolved automatically by Conan in the
+    # full build path, and we fall back to system headers on non-Conan builds.
+    cc_args = ["-O3", "-std=c++20", "-Wno-invalid-specialization"]
+    if _targets_only_x86_64():
+        cc_args.extend(["-mavx", "-mavx2", "-mfma"])
+    elif _targets_mixed_x86_non_x86():
+        if _target_is_macos():
+            # Keep x86 SIMD for x86 slices in mixed (e.g. universal2) builds while
+            # disabling x86 feature selection for each non-x86 target slice.
+            for arch in sorted(arch for arch in _target_arches() if arch not in X86_MACHINES):
+                cc_args.extend([f"-Xarch_{arch}", "-DXSIMD_X86_INSTR_SET=0"])
+        else:
+            cc_args.append("-DXSIMD_X86_INSTR_SET=0")
+    else:
+        # Force xsimd's x86 feature level to "none" on non-x86 targets so
+        # x86-only code paths guarded by XSIMD_X86_INSTR_SET stay disabled.
+        cc_args.append("-DXSIMD_X86_INSTR_SET=0")
+    if _target_is_linux() and _targets_only_x86():
+        cc_args.append("-mtls-dialect=gnu2")
     ll_args = cc_args
-    additional_include_dirs = ["/usr/include/eigen3/"]
+    additional_include_dirs = []
+    if os.path.isdir("/usr/include/eigen3"):
+        additional_include_dirs.append("/usr/include/eigen3/")
 
-pylene_cpp_dir = os.path.join(os.path.dirname(__file__), "..", "externals", "pylene", "pylene", "src")
+conan_includes, conan_libs = _conan_include_and_lib_dirs()
+if not conan_includes or not any(Path(d).name == "eigen3" for d in conan_includes):
+    conan_home = Path(os.environ.get("CONAN_HOME", str(ROOT / ".conan")))
+    conan_output_dir = Path(os.environ.get("MEANINGFULSPOT_CONAN_OUTPUT_DIR", str(ROOT / "build" / "conan")))
+    raise RuntimeError(
+        "The full (Max-Tree) build requires Conan-installed dependencies "
+        "(boost, eigen, fmt, hwloc, onetbb, range-v3), but no usable include "
+        f"directories were found.\nSearched:\n  CONAN_HOME={conan_home}\n"
+        f"  MEANINGFULSPOT_CONAN_OUTPUT_DIR={conan_output_dir}\n"
+        f"  {ROOT / 'build' / 'conan'}\n  {ROOT / '.conan'}\n"
+        f"  {Path.home() / '.conan2'}\n"
+        "Run 'conan install . --output-folder=build/conan --build=missing "
+        "-s build_type=Release -s:a compiler.cppstd=20' from the repo root first, "
+        "or build via the root setup.py which does this automatically."
+    )
+additional_include_dirs = conan_includes + additional_include_dirs
+os.environ["CPLUS_INCLUDE_PATH"] = os.pathsep.join(conan_includes + [os.environ.get("CPLUS_INCLUDE_PATH", "")])
+os.environ["C_INCLUDE_PATH"] = os.pathsep.join(conan_includes + [os.environ.get("C_INCLUDE_PATH", "")])
+
+if compilerName() == "msvc":
+    # Windows/MSVC: add library directories and link TBB/fmt
+    if conan_libs:
+        ll_args = [f"/LIBPATH:{path}" for path in conan_libs] + ["tbb12.lib", "fmt.lib"]
+        os.environ["LIBRARY_PATH"] = os.pathsep.join(conan_libs + [os.environ.get("LIBRARY_PATH", "")])
+else:
+    # Linux/macOS: use GCC-style linking with TBB/fmt in a linker group
+    static_group_libs = ["-ltbb", "-lfmt"]
+    if platform.system() == "Linux":
+        # --start-group/--end-group are GNU ld options; macOS's linker
+        # (ld64/lld) doesn't understand them.
+        static_group = ["-Wl,--start-group"] + static_group_libs + ["-Wl,--end-group"]
+    else:
+        static_group = static_group_libs
+    if conan_libs:
+        ll_args = cc_args + [f"-L{path}" for path in conan_libs] + static_group
+        os.environ["LIBRARY_PATH"] = os.pathsep.join(conan_libs + [os.environ.get("LIBRARY_PATH", "")])
+    else:
+        ll_args = cc_args + static_group
+
+pylene_cpp_dir = str(ROOT_EXTERNALS / "pylene" / "pylene" / "src")
 all_pylene_cpp_files = glob.glob("**/*.cpp", root_dir=pylene_cpp_dir, recursive=True)
+# glob() returns OS-native separators (backslashes on Windows), so the
+# exclusion below must normalize before comparing against "io/".
+all_pylene_cpp_files = [f for f in all_pylene_cpp_files if not f.replace(os.sep, "/").startswith("io/")]
 all_pylene_cpp_files = [os.path.join(pylene_cpp_dir, f) for f in all_pylene_cpp_files]
 
 extensions = [
@@ -65,10 +281,16 @@ extensions = [
 ]
 
 setup(
-    name="meaningful_spot_detector",
+    name="meaningful-spot-detector",
     version="1.0.0",
+    description="Meaningful spot detector with the local level-set implementation and the full Max-Tree variant.",
+    long_description=README.read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
     url='https://github.com/axeldavy/MeaningfulSpot',
-    license='MIT AND MPL-2.0',
+    license='MIT',
+    license_files=_stage_license_files(),
     python_requires='>=3.10',
+    install_requires=['numpy>=1.26'],
+    package_data={'': ['*.pyi']},
     ext_modules = cythonize(extensions, compiler_directives={'language_level' : "3", 'freethreading_compatible': True})
 )

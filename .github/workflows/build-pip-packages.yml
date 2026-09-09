@@ -1,0 +1,109 @@
+name: Build pip packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  sdist:
+    name: Source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Build source distribution
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --sdist
+
+      - name: Check sdist metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*.tar.gz
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+
+  full-wheels:
+    name: Full Max-Tree wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      MEANINGFUL_SPOT_BUILD: full
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install build tooling
+        run: |
+          python -m pip install --upgrade pip setuptools wheel "Cython>=3.0" "numpy>=1.26,<2.5" build "conan>=2.0"
+
+      - name: Set macOS environment
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "MACOSX_DEPLOYMENT_TARGET=26.0" >> $GITHUB_ENV
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v4.2.1
+        env:
+          CIBW_BUILD: cp311-* cp312-* cp313-* cp314-* cp314t-*
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_*"
+          CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64
+          CIBW_MANYLINUX_I686_IMAGE: quay.io/pypa/manylinux_2_28_i686
+          CIBW_MACOS_DEPLOYMENT_TARGET: 26.0
+          CIBW_BEFORE_BUILD: >
+            python -m pip install --upgrade pip setuptools wheel "Cython>=3.0" "numpy>=1.26,<2.5" "conan>=2.0" &&
+            conan profile detect --force &&
+            conan install . --output-folder=build/conan --build=missing --build=b2/* -o "*:shared=False" -o "onetbb/*:tbbbind=False" -s build_type=Release -s:a compiler.cppstd=20
+          CIBW_BEFORE_BUILD_MACOS: >
+            export MACOSX_DEPLOYMENT_TARGET=26.0 &&
+            python -m pip install --upgrade pip setuptools wheel "Cython>=3.0" "numpy>=1.26,<2.5" "conan>=2.0" &&
+            conan profile detect --force &&
+            conan install . --output-folder=build/conan --build=missing --build=b2/* -o "*:shared=False" -o "onetbb/*:tbbbind=False" -s build_type=Release -s:a compiler.cppstd=20 -s:a os.version=26.0
+          CIBW_ENVIRONMENT: |
+            MEANINGFUL_SPOT_BUILD=full
+            CONAN_HOME={project}/.conan
+            MEANINGFULSPOT_CONAN_OUTPUT_DIR={project}/build/conan
+            MACOSX_DEPLOYMENT_TARGET=26.0
+          CIBW_TEST_COMMAND: python -c "import meaningful_spot_detector; print('ok')"
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
+            bash -c "export LD_LIBRARY_PATH=$(find {project}/.conan {project}/build/conan -type d -name lib 2>/dev/null | paste -sd: -):\$LD_LIBRARY_PATH && auditwheel repair -w {dest_dir} {wheel}"
+          CIBW_REPAIR_WHEEL_COMMAND_MACOS: >
+            bash -c "export DYLD_LIBRARY_PATH=$(find {project}/.conan {project}/build/conan -type d -name lib 2>/dev/null | paste -sd: -):\$DYLD_LIBRARY_PATH && delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+
+      - name: Check wheel metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check wheelhouse/*.whl
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
