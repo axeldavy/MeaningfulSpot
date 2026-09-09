@@ -1,0 +1,12 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include THIRD_PARTY_NOTICES.md
+include externals/pylene/LICENSE
+include externals/xsimd/LICENSE
+
+recursive-include src *.py *.pyx *.pxd *.cpp *.hpp *.h *.pyi
+recursive-include externals/xsimd/include *
+recursive-include externals/pylene/pylene/include *
+recursive-include externals/pylene/pylene/src *.cpp *.hpp *.h *.in
+recursive-include externals/pylene/pylene-python *
