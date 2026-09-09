@@ -1,0 +1,40 @@
+[build-system]
+requires = [
+    "Cython>=3.0",
+    "wheel",
+    "setuptools>=68",
+    "numpy>=1.26,<2.5",
+    "conan>=2.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meaningful-spot-detector"
+version = "1.0.0"
+description = "Meaningful level-set detector for small bright spots in images."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = [
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "externals/pylene/LICENSE",
+    "externals/xsimd/LICENSE",
+]
+authors = [{ name = "Axel Davy" }]
+keywords = ["computer-vision", "image-processing", "spot-detection", "max-tree"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+full = []
+
