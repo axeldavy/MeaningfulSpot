@@ -48,6 +48,15 @@ def _targets_only_x86() -> bool:
     return all(arch in X86_MACHINES for arch in target_arches)
 
 
+def _targets_mixed_x86_non_x86() -> bool:
+    target_arches = _target_arches()
+    if not target_arches:
+        return False
+    has_x86 = any(arch in X86_MACHINES for arch in target_arches)
+    has_non_x86 = any(arch not in X86_MACHINES for arch in target_arches)
+    return has_x86 and has_non_x86
+
+
 def _target_is_linux() -> bool:
     return "linux" in sysconfig.get_platform().lower()
 
@@ -170,6 +179,11 @@ else:
     cc_args = ["-O3", "-std=c++20"]
     if _targets_only_x86():
         cc_args.extend(["-mavx", "-mavx2", "-mfma"])
+    elif _targets_mixed_x86_non_x86():
+        # Keep x86 SIMD for x86 slices in mixed (e.g. universal2) builds while
+        # disabling x86 feature selection for arm64 slices.
+        if "arm64" in _target_arches() or "aarch64" in _target_arches():
+            cc_args.extend(["-Xarch_arm64", "-DXSIMD_X86_INSTR_SET=0"])
     else:
         # Force xsimd's x86 feature level to "none" on non-x86 targets so
         # x86-only code paths guarded by XSIMD_X86_INSTR_SET stay disabled.
