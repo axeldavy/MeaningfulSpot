@@ -37,7 +37,7 @@ def _target_arches() -> set[str]:
         if arch in platform_tag:
             archs.add(arch)
     if not archs and platform.machine():
-        archs.add(platform.machine())
+        archs.add(platform.machine().lower())
     return archs
 
 
