@@ -24,6 +24,7 @@ os.chdir(SRC_DIR)
 README = ROOT / "README.md"
 ROOT_EXTERNALS = ROOT / "externals"
 X86_MACHINES = {"x86_64", "amd64", "AMD64", "i386", "i686"}
+X86_64_MACHINES = {"x86_64", "amd64", "AMD64"}
 
 
 def _target_arches() -> set[str]:
@@ -53,6 +54,13 @@ def _targets_only_x86() -> bool:
     if not target_arches:
         return False
     return all(arch in X86_MACHINES for arch in target_arches)
+
+
+def _targets_only_x86_64() -> bool:
+    target_arches = _target_arches()
+    if not target_arches:
+        return False
+    return all(arch in X86_64_MACHINES for arch in target_arches)
 
 
 def _targets_mixed_x86_non_x86() -> bool:
@@ -180,7 +188,7 @@ if compilerName() == "msvc":
     # /utf-8 is required by fmt (static assertion on Unicode support) and is
     # generally correct for source files that may contain non-ASCII text.
     cc_args = ["/O2", "/std:c++20", "/favor:INTEL64", "/MACHINE:X64", "/utf-8"]
-    if _targets_only_x86():
+    if _targets_only_x86_64():
         cc_args.insert(1, "/arch:AVX2")
     ll_args = []
     additional_include_dirs = []
@@ -188,7 +196,7 @@ else:
     # Pylene needs rangev3, eigen3 and boost. These are resolved automatically by Conan in the
     # full build path, and we fall back to system headers on non-Conan builds.
     cc_args = ["-O3", "-std=c++20"]
-    if _targets_only_x86():
+    if _targets_only_x86_64():
         cc_args.extend(["-mavx", "-mavx2", "-mfma"])
     elif _targets_mixed_x86_non_x86():
         if _target_is_macos():
