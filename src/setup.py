@@ -194,6 +194,10 @@ all_pylene_cpp_files = glob.glob("**/*.cpp", root_dir=pylene_cpp_dir, recursive=
 # glob() returns OS-native separators (backslashes on Windows), so the
 # exclusion below must normalize before comparing against "io/".
 all_pylene_cpp_files = [f for f in all_pylene_cpp_files if not f.replace(os.sep, "/").startswith("io/")]
+if platform.machine() not in X86_MACHINES:
+    # Pylene's bit-parallel transpose implementation uses x86 SIMD intrinsics
+    # (__m128i/__m256i) and does not compile on ARM targets.
+    all_pylene_cpp_files = [f for f in all_pylene_cpp_files if f.replace(os.sep, "/") != "bp/transpose.cpp"]
 all_pylene_cpp_files = [os.path.join(pylene_cpp_dir, f) for f in all_pylene_cpp_files]
 
 extensions = [
