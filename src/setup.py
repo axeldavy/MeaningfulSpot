@@ -48,6 +48,10 @@ def _targets_only_x86() -> bool:
     return all(arch in X86_MACHINES for arch in target_arches)
 
 
+def _target_is_linux() -> bool:
+    return "linux" in sysconfig.get_platform().lower()
+
+
 def _stage_license_files() -> list[str]:
     """Copy the license files into src/_licenses/ so setuptools' license_files
     globs (which must stay within the package root once cwd is SRC_DIR) can
@@ -170,7 +174,7 @@ else:
         # Force xsimd's x86 feature level to "none" on non-x86 targets so
         # x86-only code paths guarded by XSIMD_X86_INSTR_SET stay disabled.
         cc_args.append("-DXSIMD_X86_INSTR_SET=0")
-    if platform.system() == "Linux" and _targets_only_x86():
+    if _target_is_linux() and _targets_only_x86():
         cc_args.append("-mtls-dialect=gnu2")
     ll_args = cc_args
     additional_include_dirs = []
