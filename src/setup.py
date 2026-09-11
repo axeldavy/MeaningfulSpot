@@ -12,6 +12,7 @@ import os
 import platform
 import re
 import shutil
+import sysconfig
 from pathlib import Path
 import numpy as np
 from setuptools import setup
@@ -22,7 +23,29 @@ SRC_DIR = Path(__file__).resolve().parent
 os.chdir(SRC_DIR)
 README = ROOT / "README.md"
 ROOT_EXTERNALS = ROOT / "externals"
-X86_MACHINES = {"x86_64", "AMD64", "i386", "i686"}
+X86_MACHINES = {"x86_64", "amd64", "AMD64", "i386", "i686"}
+
+
+def _target_arches() -> set[str]:
+    archs: set[str] = set()
+    archflags = os.environ.get("ARCHFLAGS", "")
+    archs.update(re.findall(r"-arch\s+([A-Za-z0-9_]+)", archflags))
+    platform_tag = sysconfig.get_platform().lower()
+    if "universal2" in platform_tag:
+        archs.update({"x86_64", "arm64"})
+    for arch in ("x86_64", "amd64", "i386", "i686", "arm64", "aarch64"):
+        if arch in platform_tag:
+            archs.add(arch)
+    if not archs and platform.machine():
+        archs.add(platform.machine())
+    return archs
+
+
+def _targets_only_x86() -> bool:
+    target_arches = _target_arches()
+    if not target_arches:
+        return False
+    return all(arch in X86_MACHINES for arch in target_arches)
 
 
 def _stage_license_files() -> list[str]:
@@ -133,7 +156,7 @@ if compilerName() == "msvc":
     # /utf-8 is required by fmt (static assertion on Unicode support) and is
     # generally correct for source files that may contain non-ASCII text.
     cc_args = ["/O2", "/std:c++20", "/favor:INTEL64", "/MACHINE:X64", "/utf-8"]
-    if platform.machine() in X86_MACHINES:
+    if _targets_only_x86():
         cc_args.insert(1, "/arch:AVX2")
     ll_args = []
     additional_include_dirs = []
@@ -141,9 +164,9 @@ else:
     # Pylene needs rangev3, eigen3 and boost. These are resolved automatically by Conan in the
     # full build path, and we fall back to system headers on non-Conan builds.
     cc_args = ["-O3", "-std=c++20"]
-    if platform.machine() in X86_MACHINES:
+    if _targets_only_x86():
         cc_args.extend(["-mavx", "-mavx2", "-mfma"])
-    if platform.system() == "Linux" and platform.machine() in X86_MACHINES:
+    if platform.system() == "Linux" and _targets_only_x86():
         cc_args.append("-mtls-dialect=gnu2")
     ll_args = cc_args
     additional_include_dirs = []
@@ -194,7 +217,7 @@ all_pylene_cpp_files = glob.glob("**/*.cpp", root_dir=pylene_cpp_dir, recursive=
 # glob() returns OS-native separators (backslashes on Windows), so the
 # exclusion below must normalize before comparing against "io/".
 all_pylene_cpp_files = [f for f in all_pylene_cpp_files if not f.replace(os.sep, "/").startswith("io/")]
-if platform.machine() not in X86_MACHINES:
+if not _targets_only_x86():
     # Pylene's bit-parallel transpose implementation uses x86 SIMD intrinsics
     # (__m128i/__m256i) and does not compile on ARM targets.
     all_pylene_cpp_files = [f for f in all_pylene_cpp_files if f.replace(os.sep, "/") != "bp/transpose.cpp"]
