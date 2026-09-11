@@ -190,13 +190,11 @@ else:
         ll_args = cc_args + static_group
 
 pylene_cpp_dir = str(ROOT_EXTERNALS / "pylene" / "pylene" / "src")
-all_pylene_cpp_files = []
-if platform.machine() in X86_MACHINES:
-    all_pylene_cpp_files = glob.glob("**/*.cpp", root_dir=pylene_cpp_dir, recursive=True)
-    # glob() returns OS-native separators (backslashes on Windows), so the
-    # exclusion below must normalize before comparing against "io/".
-    all_pylene_cpp_files = [f for f in all_pylene_cpp_files if not f.replace(os.sep, "/").startswith("io/")]
-    all_pylene_cpp_files = [os.path.join(pylene_cpp_dir, f) for f in all_pylene_cpp_files]
+all_pylene_cpp_files = glob.glob("**/*.cpp", root_dir=pylene_cpp_dir, recursive=True)
+# glob() returns OS-native separators (backslashes on Windows), so the
+# exclusion below must normalize before comparing against "io/".
+all_pylene_cpp_files = [f for f in all_pylene_cpp_files if not f.replace(os.sep, "/").startswith("io/")]
+all_pylene_cpp_files = [os.path.join(pylene_cpp_dir, f) for f in all_pylene_cpp_files]
 
 extensions = [
     Extension(
