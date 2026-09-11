@@ -166,6 +166,10 @@ else:
     cc_args = ["-O3", "-std=c++20"]
     if _targets_only_x86():
         cc_args.extend(["-mavx", "-mavx2", "-mfma"])
+    else:
+        # Force xsimd's x86 feature level to "none" on non-x86 targets so
+        # x86-only code paths guarded by XSIMD_X86_INSTR_SET stay disabled.
+        cc_args.append("-DXSIMD_X86_INSTR_SET=0")
     if platform.system() == "Linux" and _targets_only_x86():
         cc_args.append("-mtls-dialect=gnu2")
     ll_args = cc_args
@@ -217,10 +221,6 @@ all_pylene_cpp_files = glob.glob("**/*.cpp", root_dir=pylene_cpp_dir, recursive=
 # glob() returns OS-native separators (backslashes on Windows), so the
 # exclusion below must normalize before comparing against "io/".
 all_pylene_cpp_files = [f for f in all_pylene_cpp_files if not f.replace(os.sep, "/").startswith("io/")]
-if not _targets_only_x86():
-    # Pylene's bit-parallel transpose implementation uses x86 SIMD intrinsics
-    # (__m128i/__m256i) and does not compile on ARM targets.
-    all_pylene_cpp_files = [f for f in all_pylene_cpp_files if f.replace(os.sep, "/") != "bp/transpose.cpp"]
 all_pylene_cpp_files = [os.path.join(pylene_cpp_dir, f) for f in all_pylene_cpp_files]
 
 extensions = [
