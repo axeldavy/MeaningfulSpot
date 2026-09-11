@@ -28,16 +28,23 @@ X86_MACHINES = {"x86_64", "amd64", "AMD64", "i386", "i686"}
 
 def _target_arches() -> set[str]:
     archs: set[str] = set()
+    aliases = {"amd64": "x86_64", "aarch64": "arm64"}
+
+    def add_arch(name: str):
+        normalized = aliases.get(name.lower(), name.lower())
+        archs.add(normalized)
+
     archflags = os.environ.get("ARCHFLAGS", "")
-    archs.update(re.findall(r"-arch\s+([A-Za-z0-9_]+)", archflags))
+    for arch in re.findall(r"-arch\s+([A-Za-z0-9_]+)", archflags):
+        add_arch(arch)
     platform_tag = sysconfig.get_platform().lower()
     if "universal2" in platform_tag:
         archs.update({"x86_64", "arm64"})
     for arch in ("x86_64", "amd64", "i386", "i686", "arm64", "aarch64"):
         if arch in platform_tag:
-            archs.add(arch)
+            add_arch(arch)
     if not archs and platform.machine():
-        archs.add(platform.machine().lower())
+        add_arch(platform.machine())
     return archs
 
 
