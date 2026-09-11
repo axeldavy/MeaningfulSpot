@@ -188,9 +188,9 @@ else:
         cc_args.extend(["-mavx", "-mavx2", "-mfma"])
     elif _targets_mixed_x86_non_x86():
         # Keep x86 SIMD for x86 slices in mixed (e.g. universal2) builds while
-        # disabling x86 feature selection for arm64 slices.
-        if "arm64" in _target_arches() or "aarch64" in _target_arches():
-            cc_args.extend(["-Xarch_arm64", "-DXSIMD_X86_INSTR_SET=0"])
+        # disabling x86 feature selection for each non-x86 target slice.
+        for arch in sorted(arch for arch in _target_arches() if arch not in X86_MACHINES):
+            cc_args.extend([f"-Xarch_{arch}", "-DXSIMD_X86_INSTR_SET=0"])
     else:
         # Force xsimd's x86 feature level to "none" on non-x86 targets so
         # x86-only code paths guarded by XSIMD_X86_INSTR_SET stay disabled.
